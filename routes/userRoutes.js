@@ -5,38 +5,30 @@ const passport = require("passport");
 
 const router = express.Router();
 
+// Google Authentication Routes
+router.get("/google",passport.authenticate("google", { scope: ["profile", "email"] }));
+router.get("/google/callback",
+    passport.authenticate("google", { failureRedirect: "/login" }),
+    (req, res) => {
+        if (!req.user) {
+            return res.status(401).json({ error: "Authentication failed" });
+        }
+        const token = generateJWT(req.user);
+
+        // res.redirect(`/success?token=${token}`); //frontend
+        res.status(200).json({ message: "Login successful", token });
+    });
+
 // Function to generate JWT token
 const generateJWT = (user) => {
     const token = jwt.sign(
         { id: user.userID, email: user.email, role: user.role },
         process.env.JWT_SECRET,
-        { expiresIn: "1d" } // Token validity (adjust as necessary)
+        { expiresIn: "1d" } 
     );
     return token;
 };
 
-// Google Authentication Routes
-router.get(
-    "/google",
-    passport.authenticate("google", { scope: ["profile", "email"] })
-);
-
-router.get(
-    "/google/callback",
-    passport.authenticate("google", { failureRedirect: "/login" }),
-    (req, res) => {
-        // Ensure the user object is present
-        if (!req.user) {
-            return res.status(401).json({ error: "Authentication failed" });
-        }
-
-        // Generate JWT
-        const token = generateJWT(req.user);
-
-        // Redirect with the token (or send it as a JSON response)
-        res.redirect(`/success?token=${token}`);
-    }
-);
 
 // Normal Authentication Routes
 router.post("/signup", signUp);

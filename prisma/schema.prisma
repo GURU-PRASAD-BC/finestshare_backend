@@ -13,6 +13,13 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum Type {
+  Home
+  Trip
+  Couple
+  Others
+}
+
 model User {
   userID       Int             @id @default(autoincrement())
   name         String
@@ -22,6 +29,7 @@ model User {
   image        String?
   friends      Friends[]       @relation("UserFriends")
   friendOf     Friends[]       @relation("FriendOf")
+  groups       Group[]         @relation("CreatorGroups")
   groupMembers GroupMember[]
   expenses     Expenses[]      @relation("UserExpenses")
   splits       ExpenseSplit[]
@@ -39,10 +47,14 @@ model Friends {
 }
 
 model Group {
-  groupID   Int          @id @default(autoincrement())
-  groupName String
-  members   GroupMember[]
-  expenses  Expenses[]
+  groupID     Int          @id @default(autoincrement())
+  groupName   String
+  groupType   Type          // "Home", "Trip", "Couple", "Others"
+  groupImage  String?
+  createdBy   Int
+  creator     User          @relation("CreatorGroups", fields: [createdBy], references: [userID])      
+  members     GroupMember[]
+  expenses    Expenses[]
 }
 
 model GroupMember {

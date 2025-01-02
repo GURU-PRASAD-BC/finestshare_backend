@@ -3,8 +3,15 @@ const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-passport.serializeUser((user, done) => done(null, user));
-passport.deserializeUser((obj, done) => done(null, obj));
+passport.serializeUser((user, done) => done(null, user.userID));
+passport.deserializeUser(async (userID, done) => {
+    try {
+        const user = await prisma.user.findUnique({ where: { userID } });
+        done(null, user);
+    } catch (err) {
+        done(err, null);
+    }
+});  //fetch the user from the database during deserialization
 
 passport.use(new GoogleStrategy({
     clientID: process.env.CLIENT_ID,

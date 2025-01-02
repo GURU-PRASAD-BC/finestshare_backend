@@ -8,13 +8,19 @@ const helmet = require("helmet");
 const morgan = require("morgan");
 const prisma = require("./config/prismaClient"); 
 const userRoutes = require("./routes/userRoutes");
+const groupRoutes = require('./routes/groupRoutes');
+
 
 const app = express();
 
 // Middleware
 app.use(express.json()); 
 app.use(cors());        
-app.use(session({ secret: 'iambatman', resave: false, saveUninitialized: true })); 
+app.use(session({ secret: process.env.SESSION_SECRET || 'secret',
+   resave: false, 
+   saveUninitialized: true,
+   cookie: { secure: false }
+   })); 
 // app.use(helmet());       
 // app.use(morgan("dev"));  
 
@@ -24,6 +30,7 @@ app.use(passport.session());
 
 // Use routes
 app.use('/auth', userRoutes);
+app.use('/groups', groupRoutes);
 
 //checking
 // app.get("/", (req, res) => {
