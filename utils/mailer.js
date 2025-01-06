@@ -17,6 +17,8 @@ const sendInvitationMail = async (recipientEmail, groupName) => {
       <h1>Join the Group: ${groupName}</h1>
       <p>You have been invited to join the group <strong>${groupName}</strong> on Splitwise.</p>
       <p>Click <a href="http://localhost:3000/signup">here</a> to sign up and join the group.</p>
+      <br />
+      <img src="https://assets.splitwise.com/assets/pro/logo-337b1a7d372db4b56c075c7893d68bfc6873a65d2f77d61b27cb66b6d62c976c.svg" alt="Splitwise App" style="width:300px;height:auto;"/>
     `,
   };
 
@@ -28,4 +30,14 @@ const sendInvitationMail = async (recipientEmail, groupName) => {
   }
 };
 
-module.exports = sendInvitationMail;
+const sendMail = async (options) => {
+  try {
+    await transporter.sendMail(options);
+    console.log(`Email sent to ${options.to}`);
+  } catch (error) {
+    console.error(`Failed to send email to ${options.to}:`, error);
+  }
+};
+
+
+module.exports = {sendInvitationMail,sendMail};

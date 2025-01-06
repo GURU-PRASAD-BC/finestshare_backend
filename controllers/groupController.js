@@ -1,5 +1,5 @@
 const prisma = require('../config/prismaClient');
-const sendInvitationMail = require('../utils/inviteMailer');
+const sendInvitationMail = require('../utils/mailer');
 
 // Create a new group
 exports.createGroup = async (req, res) => {
@@ -10,11 +10,13 @@ exports.createGroup = async (req, res) => {
     }
   
     try {
+      const defaultGroupImage = "https://s3.amazonaws.com/splitwise/uploads/group/default_avatars/v2021/avatar-blue4-trip-50px.png";
+
       const newGroup = await prisma.group.create({
         data: {
           groupName,
           groupType,
-          groupImage,
+          groupImage: groupImage || defaultGroupImage,
         },
       });
   
@@ -62,7 +64,8 @@ exports.createGroup = async (req, res) => {
           });
         } else {
           // Send an invitation email to the user
-          await sendInvitationMail(email, group.groupName);
+          console.log(`Sending mail to : ${email}`)
+          // await sendInvitationMail(email, group.groupName);
         }
       }
   
@@ -81,6 +84,7 @@ exports.editGroupSettings = async (req, res) => {
 
   try {
     const group = await prisma.group.findUnique({ where: { groupID: parseInt(groupID) } });
+    const defaultGroupImage = "https://s3.amazonaws.com/splitwise/uploads/group/default_avatars/v2021/avatar-blue4-trip-50px.png";
 
     if (!group || group.createdBy !== req.userID) {
       return res.status(403).json({ message: 'You are not authorized to edit this group' });
@@ -88,7 +92,11 @@ exports.editGroupSettings = async (req, res) => {
 
     const updatedGroup = await prisma.group.update({
       where: { groupID: parseInt(groupID) },
-      data: { groupName, groupType, groupImage },
+      data: {
+        groupName,
+        groupType,
+        groupImage: groupImage || group.groupImage || defaultGroupImage, 
+      },
     });
 
     res.status(200).json({ message: 'Group settings updated successfully', group: updatedGroup });
