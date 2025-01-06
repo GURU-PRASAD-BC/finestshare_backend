@@ -9,7 +9,8 @@ const SALT_ROUNDS = parseInt(process.env.SALT_ROUNDS || "5");
 
 // Utility to generate JWT token
 const generateJWT = (user) => {
-  return jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: "1d" });
+  // console.log({ id: user.userID, email: user.email, role: user.role })
+  return jwt.sign({ id: user.userID, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: "1d" });
 };
 
 // User Sign-Up

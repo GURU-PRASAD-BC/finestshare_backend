@@ -18,9 +18,10 @@ const authenticateUser = async (req, res, next) => {
 
     const decoded = jwt.verify(token, JWT_SECRET);
     req.userID = decoded.id; // Attach user ID from JWT
+    //console.log(req.userID,decoded.id)
 
     // Optionally, fetch the user from the database if more details are needed
-    const user = await prisma.user.findUnique({ where: { id: req.userID } });
+    const user = await prisma.user.findUnique({ where: { userID: req.userID } });
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }

@@ -1,134 +1,192 @@
 const prisma = require('../config/prismaClient');
-const sendInvitationMail = require('../utils/mailer');
+const { v4: uuidv4 } = require('uuid');
+const { sendGroupInvitationMail} = require('../utils/mailer');
 
 // Create a new group
 exports.createGroup = async (req, res) => {
-    const { groupName, groupType, groupImage, members } = req.body;
-  
-    if (!groupName || !groupType || !members || members.length === 0) {
-      return res.status(400).json({ message: 'Group name, type, and members are required' });
-    }
-  
-    try {
-      const defaultGroupImage = "https://s3.amazonaws.com/splitwise/uploads/group/default_avatars/v2021/avatar-blue4-trip-50px.png";
+  const { groupName, groupType, groupImage, members } = req.body;
 
-      const newGroup = await prisma.group.create({
-        data: {
-          groupName,
-          groupType,
-          groupImage: groupImage || defaultGroupImage,
+  if (!groupName || !groupType || !members || members.length === 0) {
+    return res.status(400).json({ message: 'Group name, type, and members are required' });
+  }
+
+  try {
+    const defaultGroupImage = "https://s3.amazonaws.com/splitwise/uploads/group/default_avatars/v2021/avatar-blue4-trip-50px.png";
+
+    // Create the group
+    const newGroup = await prisma.group.create({
+      data: {
+        groupName,
+        groupType,
+        groupImage: groupImage || defaultGroupImage,
+        createdBy: req.userID,
+      },
+    });
+
+    // Process and add members
+    for (const member of members) {
+      let user = null;
+      let emailnotify=true;
+
+      // Check if email exists
+      if (member.email) {
+        user = await prisma.user.findUnique({ where: { email: member.email } });
+
+        if (user && user.userID === req.userID) {
+          return res.status(400).json({ message: `You cannot add yourself (${member.email}) as a group member.` });
+        }
+      } else {
+        emailnotify=false;
+        member.email = `unknown-${uuidv4()}@example.com`;
+      }
+
+      // If user doesn't exist, create them
+      if (!user && emailnotify) {
+        user = await prisma.user.create({
+          data: {
+            name: member.name || `User-${uuidv4()}`,
+            password:'userwithoutemail',
+            email: member.email,
+            role: 'user',
+          },
+        });
+
+        // Send group invitation email
+        await sendGroupInvitationMail(member.email, groupName);
+      }
+
+      // Check if the friend relationship already exists
+      const existingFriend = await prisma.friends.findFirst({
+        where: {
+          userID: req.userID,
+          friendID: user.userID,
         },
       });
-  
-      // Add members to the group
-      const groupMembers = members.map((userID) => ({
-        userID,
-        groupID: newGroup.groupID,
-      }));
-  
-      await prisma.groupMember.createMany({ data: groupMembers });
-  
-      res.status(201).json({ message: 'Group created successfully', group: newGroup });
-    } catch (error) {
-      console.error('Error creating group:', error);
-      res.status(500).json({ message: 'Failed to create group' });
-    }
-  };
-  
-  // Add members to a group
-  exports.addMembersToGroup = async (req, res) => {
-    const { groupID } = req.params;
-    const { members } = req.body;
-  
-    if (!groupID || !members || members.length === 0) {
-      return res.status(400).json({ message: 'Group ID and members are required' });
-    }
-  
-    try {
-      const group = await prisma.group.findUnique({ where: { groupID: parseInt(groupID) } });
-  
-      if (!group) {
-        return res.status(404).json({ message: 'Group not found' });
-      }
-  
-      for (const email of members) {
-        const user = await prisma.user.findUnique({ where: { email } });
-  
-        if (user) {
-          // Add the user to the group
-          await prisma.groupMember.create({
-            data: {
-              groupID: parseInt(groupID),
-              userID: user.userID,
-            },
-          });
-        } else {
-          // Send an invitation email to the user
-          console.log(`Sending mail to : ${email}`)
-          // await sendInvitationMail(email, group.groupName);
-        }
-      }
-  
-      res.status(200).json({ message: 'Members added successfully' });
-    } catch (error) {
-      console.error('Error adding members to group:', error);
-      res.status(500).json({ message: 'Failed to add members to group' });
-    }
-  };
 
-  
-// Edit group settings
-exports.editGroupSettings = async (req, res) => {
+      if (!existingFriend) {
+        // Add as friend
+        await prisma.friends.createMany({
+          data: [
+            { userID: req.userID, friendID: user.userID },
+            { userID: user.userID, friendID: req.userID },
+          ],
+        });
+      }
+
+      // Add user to the group
+      const existingMember = await prisma.groupMember.findFirst({
+        where: {
+          groupID: newGroup.groupID,
+          userID: user.userID,
+        },
+      });
+
+      if (!existingMember) {
+        await prisma.groupMember.create({
+          data: {
+            groupID: newGroup.groupID,
+            userID: user.userID,
+          },
+        });
+      } else {
+        console.log(`User ${member.email} is already part of the group.`);
+      }
+    }
+
+    res.status(201).json({ message: 'Group created successfully', group: newGroup });
+  } catch (error) {
+    console.error('Error creating group:', error);
+    res.status(500).json({ message: 'Failed to create group' });
+  }
+};
+
+// Edit a group
+exports.editGroup = async (req, res) => {
   const { groupID } = req.params;
-  const { groupName, groupType, groupImage } = req.body;
+  const { groupName, groupType, groupImage, members } = req.body;
 
   try {
     const group = await prisma.group.findUnique({ where: { groupID: parseInt(groupID) } });
-    const defaultGroupImage = "https://s3.amazonaws.com/splitwise/uploads/group/default_avatars/v2021/avatar-blue4-trip-50px.png";
 
     if (!group || group.createdBy !== req.userID) {
       return res.status(403).json({ message: 'You are not authorized to edit this group' });
     }
 
-    const updatedGroup = await prisma.group.update({
+    // Update group details
+    await prisma.group.update({
       where: { groupID: parseInt(groupID) },
       data: {
         groupName,
         groupType,
-        groupImage: groupImage || group.groupImage || defaultGroupImage, 
+        groupImage: groupImage || group.groupImage,
       },
     });
 
-    res.status(200).json({ message: 'Group settings updated successfully', group: updatedGroup });
-  } catch (error) {
-    console.error('Error updating group settings:', error);
-    res.status(500).json({ message: 'Failed to update group settings' });
-  }
-};
+    // Update members if provided
+    if (members) {
+      await prisma.groupMember.deleteMany({ where: { groupID: parseInt(groupID) } });
 
-// Delete a user from the group
-exports.deleteUserFromGroup = async (req, res) => {
-  const { groupID, userID } = req.params;
+      for (const member of members) {
+        let user = null;
+        let emailnotify=true;
 
-  try {
-    const group = await prisma.group.findUnique({ where: { groupID: parseInt(groupID) } });
+        if (member.email) {
+          user = await prisma.user.findUnique({ where: { email: member.email } });
+        } else {
+          emailnotify=false;
+          member.email = `unknown-${uuidv4()}@example.com`;
+        }
 
-    if (!group || group.createdBy !== req.userID) {
-      return res.status(403).json({ message: 'You are not authorized to remove members from this group' });
+        if (!user) {
+          user = await prisma.user.create({
+            data: {
+              name: member.name || `User-${uuidv4()}`,
+              email: member.email,
+              password:'userwithoutemail',
+              role: 'user',
+            },
+          });
+
+          // Send group invitation email
+          await sendGroupInvitationMail(member.email, groupName);
+        }
+
+        // Add as friend
+        const existingFriend = await prisma.friends.findFirst({
+          where: {
+            userID: req.userID,
+            friendID: user.userID,
+          },
+        });
+
+        if (!existingFriend) {
+          await prisma.friends.createMany({
+            data: [
+              { userID: req.userID, friendID: user.userID },
+              { userID: user.userID, friendID: req.userID },
+            ],
+          });
+
+        }
+
+        // Add user to group
+        await prisma.groupMember.create({
+          data: {
+            groupID: parseInt(groupID),
+            userID: user.userID,
+          },
+        });
+      }
     }
 
-    await prisma.groupMember.deleteMany({
-      where: { groupID: parseInt(groupID), userID: parseInt(userID) },
-    });
-
-    res.status(200).json({ message: 'User removed from the group successfully' });
+    res.status(200).json({ message: 'Group updated successfully' });
   } catch (error) {
-    console.error('Error removing user from group:', error);
-    res.status(500).json({ message: 'Failed to remove user from group' });
+    console.error('Error editing group:', error);
+    res.status(500).json({ message: 'Failed to update group' });
   }
 };
 
-// Delete the group
+// Delete a group
 exports.deleteGroup = async (req, res) => {
   const { groupID } = req.params;
 
@@ -144,7 +202,7 @@ exports.deleteGroup = async (req, res) => {
     });
 
     if (pendingExpenses.length > 0) {
-      return res.status(400).json({ message: 'Cannot delete the group with pending expenses' });
+      return res.status(400).json({ message: 'Cannot delete group with pending expenses' });
     }
 
     await prisma.group.delete({ where: { groupID: parseInt(groupID) } });
@@ -153,5 +211,60 @@ exports.deleteGroup = async (req, res) => {
   } catch (error) {
     console.error('Error deleting group:', error);
     res.status(500).json({ message: 'Failed to delete group' });
+  }
+};
+
+// View group details
+exports.viewGroupDetails = async (req, res) => {
+  const { groupID } = req.params;
+
+  try {
+    const group = await prisma.group.findUnique({
+      where: { groupID: parseInt(groupID) },
+      include: {
+        groupMembers: { include: { user: true } },
+      },
+    });
+
+    if (!group) {
+      return res.status(404).json({ message: 'Group not found' });
+    }
+
+    const isMember = group.groupMembers.some(member => member.userID === req.userID);
+
+    if (!isMember && group.createdBy !== req.userID) {
+      return res.status(403).json({ message: 'You are not authorized to view this group' });
+    }
+
+    res.status(200).json({ group });
+  } catch (error) {
+    console.error('Error viewing group details:', error);
+    res.status(500).json({ message: 'Failed to fetch group details' });
+  }
+};
+
+// View all groups related to the user
+exports.viewUserGroups = async (req, res) => {
+  try {
+    const userGroups = await prisma.group.findMany({
+      where: {
+        OR: [
+          { createdBy: req.userID },
+          {
+            groupMembers: {
+              some: {
+                userID: req.userID,
+              },
+            },
+          },
+        ],
+      },
+      include: { groupMembers: { include: { user: true } } },
+    });
+
+    res.status(200).json({ groups: userGroups });
+  } catch (error) {
+    console.error('Error fetching user groups:', error);
+    res.status(500).json({ message: 'Failed to fetch groups' });
   }
 };
