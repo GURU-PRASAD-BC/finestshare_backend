@@ -41,18 +41,20 @@ exports.createGroup = async (req, res) => {
       }
 
       // If user doesn't exist, create them
-      if (!user && emailnotify) {
+      if (!user) {
         user = await prisma.user.create({
           data: {
             name: member.name || `User-${uuidv4()}`,
-            password:'userwithoutemail',
+            password:'nopassword',
             email: member.email,
             role: 'user',
           },
         });
 
-        // Send group invitation email
-        await sendGroupInvitationMail(member.email, groupName);
+        if(emailnotify)
+        {
+          await sendGroupInvitationMail(member.email, groupName);
+        }
       }
 
       // Check if the friend relationship already exists
@@ -100,7 +102,6 @@ exports.createGroup = async (req, res) => {
   }
 };
 
-// Edit a group
 exports.editGroup = async (req, res) => {
   const { groupID } = req.params;
   const { groupName, groupType, groupImage, members } = req.body;
@@ -112,28 +113,22 @@ exports.editGroup = async (req, res) => {
       return res.status(403).json({ message: 'You are not authorized to edit this group' });
     }
 
-    // Update group details
     await prisma.group.update({
       where: { groupID: parseInt(groupID) },
-      data: {
-        groupName,
-        groupType,
-        groupImage: groupImage || group.groupImage,
-      },
+      data: { groupName, groupType, groupImage: groupImage || group.groupImage },
     });
 
-    // Update members if provided
     if (members) {
       await prisma.groupMember.deleteMany({ where: { groupID: parseInt(groupID) } });
 
       for (const member of members) {
         let user = null;
-        let emailnotify=true;
+        let emailnotify = true;
 
         if (member.email) {
           user = await prisma.user.findUnique({ where: { email: member.email } });
         } else {
-          emailnotify=false;
+          emailnotify = false;
           member.email = `unknown-${uuidv4()}@example.com`;
         }
 
@@ -141,22 +136,36 @@ exports.editGroup = async (req, res) => {
           user = await prisma.user.create({
             data: {
               name: member.name || `User-${uuidv4()}`,
+              password: 'nopassword',
               email: member.email,
-              password:'userwithoutemail',
               role: 'user',
             },
           });
 
-          // Send group invitation email
-          await sendGroupInvitationMail(member.email, groupName);
+          if (emailnotify) {
+            await sendGroupInvitationMail(member.email, groupName);
+          }
         }
 
-        // Add as friend
+        if (user.email.startsWith('unknown-') && member.newEmail) {
+          const emailExists = await prisma.user.findUnique({ where: { email: member.newEmail } });
+
+          if (emailExists) {
+            return res.status(400).json({ 
+              message: `The email address ${member.newEmail} is already associated with another user.` 
+            });
+          }
+
+          await prisma.user.update({
+            where: { email: user.email },
+            data: { email: member.newEmail },
+          });
+
+          await sendGroupInvitationMail(member.newEmail, groupName);
+        }
+
         const existingFriend = await prisma.friends.findFirst({
-          where: {
-            userID: req.userID,
-            friendID: user.userID,
-          },
+          where: { userID: req.userID, friendID: user.userID },
         });
 
         if (!existingFriend) {
@@ -166,15 +175,10 @@ exports.editGroup = async (req, res) => {
               { userID: user.userID, friendID: req.userID },
             ],
           });
-
         }
 
-        // Add user to group
         await prisma.groupMember.create({
-          data: {
-            groupID: parseInt(groupID),
-            userID: user.userID,
-          },
+          data: { groupID: parseInt(groupID), userID: user.userID },
         });
       }
     }
@@ -185,6 +189,7 @@ exports.editGroup = async (req, res) => {
     res.status(500).json({ message: 'Failed to update group' });
   }
 };
+
 
 // Delete a group
 exports.deleteGroup = async (req, res) => {
@@ -222,15 +227,25 @@ exports.viewGroupDetails = async (req, res) => {
     const group = await prisma.group.findUnique({
       where: { groupID: parseInt(groupID) },
       include: {
-        groupMembers: { include: { user: true } },
+        members: { include: 
+          { 
+            user: {
+            select: {
+              userID: true,
+              name: true,
+              email: true,
+              image:true,
+            },} 
+        },
       },
-    });
+    }
+  });
 
     if (!group) {
       return res.status(404).json({ message: 'Group not found' });
     }
 
-    const isMember = group.groupMembers.some(member => member.userID === req.userID);
+    const isMember = group.members.some(member => member.userID === req.userID);
 
     if (!isMember && group.createdBy !== req.userID) {
       return res.status(403).json({ message: 'You are not authorized to view this group' });
@@ -251,7 +266,7 @@ exports.viewUserGroups = async (req, res) => {
         OR: [
           { createdBy: req.userID },
           {
-            groupMembers: {
+            members: {
               some: {
                 userID: req.userID,
               },
@@ -259,7 +274,16 @@ exports.viewUserGroups = async (req, res) => {
           },
         ],
       },
-      include: { groupMembers: { include: { user: true } } },
+      include: { members: { include: { 
+        user: {
+        select: {
+          userID: true,
+          name: true,
+          email: true,
+          image:true,
+        },} 
+       } 
+      } },
     });
 
     res.status(200).json({ groups: userGroups });

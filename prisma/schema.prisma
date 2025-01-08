@@ -17,6 +17,7 @@ enum Type {
   Home
   Trip
   Couple
+  Office
   Others
 }
 
@@ -61,8 +62,14 @@ model GroupMember {
   id      Int   @id @default(autoincrement())
   groupID Int
   userID  Int
-  group   Group @relation(fields: [groupID], references: [groupID])
+  group   Group @relation(fields: [groupID], references: [groupID], onDelete: Cascade)
   user    User  @relation(fields: [userID], references: [userID])
+}
+
+model Category {
+  categoryID Int        @id @default(autoincrement())
+  name       String
+  expenses   Expenses[] @relation("CategoryExpenses")
 }
 
 model Expenses {
@@ -76,6 +83,8 @@ model Expenses {
   group       Group?      @relation(fields: [groupID], references: [groupID])
   user        User        @relation("UserExpenses", fields: [paidBy], references: [userID])
   splits      ExpenseSplit[]
+  categoryID  Int
+  category    Category    @relation("CategoryExpenses", fields: [categoryID], references: [categoryID])
 }
 
 model ExpenseSplit {

@@ -10,7 +10,7 @@ const prisma = require("./config/prismaClient");
 const userRoutes = require("./routes/userRoutes");
 const groupRoutes = require('./routes/groupRoutes');
 const friendRoutes = require("./routes/friendRoutes");
-
+const expenseRoutes = require('./routes/expenseRoutes');
 
 const app = express();
 
@@ -33,6 +33,7 @@ app.use(passport.session());
 app.use('/auth', userRoutes);
 app.use('/group', groupRoutes);
 app.use("/friend", friendRoutes);
+app.use('/expense', expenseRoutes);
 
 //checking
 // app.get("/", (req, res) => {

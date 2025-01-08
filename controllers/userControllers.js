@@ -1,11 +1,12 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const nodemailer = require("../utils/mailer");
+const {sendMail} = require("../utils/mailer");
 const prisma = require("../config/prismaClient");
 const { signUpSchema, signInSchema } = require("../utils/schemaValidation");
 
 const JWT_SECRET = process.env.JWT_SECRET || "jwt";
 const SALT_ROUNDS = parseInt(process.env.SALT_ROUNDS || "5");
+const frontendURL = process.env.FRONTEND_URL || "http://192.168.0.126:3000";
 
 // Utility to generate JWT token
 const generateJWT = (user) => {
@@ -59,12 +60,42 @@ exports.logIn = async (req, res) => {
     if (!isPasswordCorrect) return res.status(404).json({ message: "Invalid email or password" });
 
     const token = generateJWT(user);
-    res.status(200).json({ message: "Login successful", token });
+    res.status(200).json({ message: "Login successful", token});
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Something went wrong" });
   }
 };
+
+//GetInfo
+exports.getLoggedInUser = async (req, res) => {
+  try {
+    // Get token
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "Authorization token is missing or invalid" });
+    }
+
+    const token = authHeader.split(" ")[1];
+
+    const decoded = jwt.verify(token, JWT_SECRET);
+
+    const user = await prisma.user.findUnique({
+      where: { userID: decoded.id },
+      select: { userID: true, name: true, email: true, image: true, role: true }, 
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    res.status(200).json({ user });
+  } catch (error) {
+    console.error("Error fetching logged-in user:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
 
 // Send Password Reset Email
 exports.sendPasswordResetEmail = async (req, res) => {
@@ -75,12 +106,11 @@ exports.sendPasswordResetEmail = async (req, res) => {
 
     const resetToken = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: "1h" });
 
-    const resetLink = `http://localhost:3000/reset-password?token=${resetToken}`;
-    await nodemailer.sendMail({
-      from: process.env.EMAIL_USER,
-      to: email,
-      subject: "Password Reset Request",
-      html: `
+    const resetLink = `${frontendURL}/auth/reset-password?token=${resetToken}`;
+
+    const mail= email;
+    const subject= "Password Reset Request";
+    const html= `
       <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -142,8 +172,7 @@ exports.sendPasswordResetEmail = async (req, res) => {
     </div>
 </body>
       `
-      ,
-    });
+    await sendMail(mail,subject,html);
 
     res.status(200).json({ message: "Password reset email sent" });
   } catch (err) {
@@ -155,18 +184,24 @@ exports.sendPasswordResetEmail = async (req, res) => {
 // Reset Password
 exports.resetPassword = async (req, res) => {
   try {
-    const { token, newPassword } = req.body;
+    const { token, password } = req.body;
     const decoded = jwt.verify(token, JWT_SECRET);
 
-    const hashedPassword = await bcrypt.hash(newPassword, SALT_ROUNDS);
+    // console.log('Received Token-',token); 
+    // console.log('Received Password-',password);
+
+    const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+    
     await prisma.user.update({
-      where: { id: decoded.id },
+      where: { email: decoded.email },
       data: { password: hashedPassword },
     });
 
     res.status(200).json({ message: "Password updated successfully" });
+    // res.redirect(`${frontendURL}/auth/login`);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Invalid or expired token" });
   }
 };
+
