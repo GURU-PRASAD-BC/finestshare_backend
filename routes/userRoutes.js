@@ -1,6 +1,6 @@
 const express = require("express");
 const jwt = require("jsonwebtoken");
-const { signUp, logIn, sendPasswordResetEmail, resetPassword, getLoggedInUser} = require("../controllers/userControllers");
+const { signUp, logIn, sendPasswordResetEmail, resetPassword, getLoggedInUser, updateUser, deleteUser} = require("../controllers/userControllers");
 const passport = require("passport");
 
 const router = express.Router();
@@ -29,6 +29,11 @@ router.post("/login", logIn);
 
 // Info Route
 router.get("/me", getLoggedInUser);
+
+ // Update User Data
+router.put("/update", updateUser);
+// Delete User and Related Data
+router.delete("/delete", deleteUser);
 
 // Password Reset Routes
 router.post("/forgot-password", sendPasswordResetEmail);

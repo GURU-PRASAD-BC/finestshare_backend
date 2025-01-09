@@ -34,7 +34,6 @@ const sendGroupInvitationMail = async (recipientEmail, groupName) => {
     <p>You have been invited to join the group <strong>${groupName}</strong> on FinestShare.</p>
     <p>Click <a href="http://localhost:3000/signup">here</a> to sign up and join the group.</p>
     <br />
-    <img src="https://assets.splitwise.com/assets/pro/logo-337b1a7d372db4b56c075c7893d68bfc6873a65d2f77d61b27cb66b6d62c976c.svg" alt="Splitwise App" style="width:300px;height:auto;"/>
   `;
   await sendMail(recipientEmail, subject, htmlContent);
 };

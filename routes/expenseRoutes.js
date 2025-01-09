@@ -8,6 +8,7 @@ const {
   deleteExpense,
   updateExpense,
   getBalances,
+  settleExpense,
 } = require('../controllers/expenseController');
 
 // Add an expense
@@ -22,5 +23,7 @@ router.delete('/:expenseID', authenticateUser, deleteExpense);
 router.put('/:expenseID', authenticateUser, updateExpense);
 // Get balances for a user
 router.get('/balances', authenticateUser, getBalances);
+// Settle an expense
+router.post('/settle', authenticateUser, settleExpense);
 
 module.exports = router;

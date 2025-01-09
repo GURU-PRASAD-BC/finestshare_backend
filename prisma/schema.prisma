@@ -28,6 +28,7 @@ model User {
   password     String
   role         String          @default("user")
   image        String?
+  phone        String?         @unique
   friends      Friends[]       @relation("UserFriends")
   friendOf     Friends[]       @relation("FriendOf")
   groups       Group[]         @relation("CreatorGroups")
